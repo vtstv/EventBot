@@ -1,0 +1,13 @@
+{
+    "title": "Default Event",
+    "roles": {
+        "Participant": {
+            "limit": 10,
+            "emoji": "<:6edwnKK_400x400:1309361487436845106>"
+        },
+        "Organizer": {
+            "limit": 2,
+            "emoji": "<:6edwnKK_400x400:1309361487436845106>"
+        }
+    }
+}

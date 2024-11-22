@@ -1,0 +1,14 @@
+﻿bot:
+  default_prefix: '%'
+  default_language: 'en'
+  owner_id: 'murr01'
+
+database:
+  host: 'localhost'
+  port: 3306
+  database: 'discord_event_bot'
+  user: 'root'
+  password: ''
+
+roles:
+  manager_role: 'Manager'

@@ -1,0 +1,18 @@
+{
+    "title": "Raid Event",
+    "roles": {
+        "Tank": {
+            "limit": 2,
+            "emoji": "<:6edwnKK_400x400:1309361487436845106>"
+        },
+        "Healer": {
+            "limit": 2,
+            "emoji": "<:6edwnKK_400x400:1309361487436845106>"
+        },
+        "DPS": {
+            "limit": 6,
+            "emoji": "<:6edwnKK_400x400:1309361487436845106>"
+        }
+    },
+    "image_path": "/images/raid.png"
+}
