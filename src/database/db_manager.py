@@ -40,7 +40,6 @@ class DatabaseManager:
                 name VARCHAR(100) NOT NULL,
                 description TEXT,
                 start_date DATETIME NOT NULL,
-                end_date DATETIME NOT NULL,
                 status VARCHAR(20) DEFAULT 'open',
                 template_name VARCHAR(50),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -67,13 +66,13 @@ class DatabaseManager:
         self.connection.commit()
         cursor.close()
 
-    def create_event(self, guild_id, creator_id, name, description, start_date, end_date, template_name=None):
+    def create_event(self, guild_id, creator_id, name, description, start_date, template_name=None):
         cursor = self.connection.cursor()
         query = '''
-            INSERT INTO events (guild_id, creator_id, name, description, start_date, end_date, template_name)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO events (guild_id, creator_id, name, description, start_date, template_name)
+            VALUES (%s, %s, %s, %s, %s, %s)
         '''
-        cursor.execute(query, (guild_id, creator_id, name, description, start_date, end_date, template_name))
+        cursor.execute(query, (guild_id, creator_id, name, description, start_date, template_name))
         self.connection.commit()
         event_id = cursor.lastrowid
         cursor.close()

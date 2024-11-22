@@ -2,6 +2,7 @@
 from discord import app_commands
 from discord.ext import commands
 from utils.permissions import is_admin
+import asyncio
 
 class AdminCommands(commands.Cog):
     def __init__(self, bot):
@@ -19,7 +20,7 @@ class AdminCommands(commands.Cog):
     async def setup(self, interaction: discord.Interaction):
         """Initial bot setup"""
         print(f"Received setup command from {interaction.user}")
-        await interaction.response.send_message("Please specify the channel where the bot should listen for commands!", ephemeral=True)
+        await interaction.response.send_message("Please specify the channel where the bot should listen for commands)", ephemeral=True)
 
         def check(m):
             return m.author == interaction.user and m.channel == interaction.channel

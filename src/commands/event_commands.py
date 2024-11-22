@@ -2,9 +2,11 @@
 import discord
 from discord.ext import commands
 from discord.ui import View, Button
+from discord import app_commands
 from utils.permissions import has_event_permission
 import json
 import os
+from events.views import EventSignupView, EventManagementView  
 
 class EventManager(commands.Cog):
     def __init__(self, bot):
@@ -28,6 +30,7 @@ class EventManager(commands.Cog):
                         print(f"Error loading template {filename}: {e}")
 
     @commands.command(name='create')
+    @commands.has_permissions(administrator=True)
     async def create(self, ctx):
         """Start the event creation process via DM"""
         user = ctx.author
@@ -52,10 +55,6 @@ class EventManager(commands.Cog):
             start_date_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
             start_date = start_date_msg.content
             print(f"Event start date: {start_date}")
-            await user.send("When will the event end? (Format: YYYY-MM-DD HH:MM)")
-            end_date_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
-            end_date = end_date_msg.content
-            print(f"Event end date: {end_date}")
             await user.send("Do you want to use a template for this event? (yes/no)")
             template_choice_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
             template_choice = template_choice_msg.content.lower()
@@ -73,9 +72,6 @@ class EventManager(commands.Cog):
                 await user.send("Invalid date format. Please use YYYY-MM-DD HH:MM")
                 return
 
-            if start_date >= datetime.strptime(end_date, '%Y-%m-%d %H:%M'):
-                await user.send("End date must be after start date")
-                return
             if template_name and template_name not in self.templates:
                 await user.send(f"Template '{template_name}' not found")
                 return
@@ -86,7 +82,6 @@ class EventManager(commands.Cog):
                 name=name,
                 description=description,
                 start_date=start_date,
-                end_date=datetime.strptime(end_date, '%Y-%m-%d %H:%M'),
                 template_name=template_name
             )
             print(f"Event created with ID: {event_id}")
@@ -109,18 +104,43 @@ class EventManager(commands.Cog):
         except TimeoutError:
             await user.send("Event creation timed out. Please try again.")
 
+    @app_commands.command(name='create_event', description='Create a new event')
+    @app_commands.default_permissions(administrator=True)
+    async def create_event(self, interaction: discord.Interaction):
+        await self.create(interaction)
+
     async def edit_event(self, event_id: int, **kwargs):
         """Edit an existing event"""
         event = self.db.get_event(event_id)
         if not event:
             raise ValueError("Event not found")
-        # Validate date changes
-        if 'start_date' in kwargs or 'end_date' in kwargs:
-            start_date = kwargs.get('start_date', event['start_date'])
-            end_date = kwargs.get('end_date', event['end_date'])
-            if start_date >= end_date:
-                raise ValueError("End date must be after start date")
         self.db.update_event(event_id, **kwargs)
+
+    @app_commands.command(name='edit_event', description='Edit an existing event')
+    @app_commands.default_permissions(administrator=True)
+    async def edit_event_command(self, interaction: discord.Interaction, event_id: int, field: str, value: str):
+        event = self.db.get_event(event_id)
+        if not event:
+            await interaction.response.send_message("Event not found.")
+            return
+        if interaction.user.id != event['creator_id'] and interaction.user.id != self.bot.owner_id:
+            await interaction.response.send_message("You do not have permission to edit this event.")
+            return
+        if field == 'name':
+            await self.edit_event(event_id, name=value)
+        elif field == 'description':
+            await self.edit_event(event_id, description=value)
+        elif field == 'start_date':
+            try:
+                start_date = datetime.strptime(value, '%Y-%m-%d %H:%M')
+                await self.edit_event(event_id, start_date=start_date)
+            except ValueError:
+                await interaction.response.send_message("Invalid date format. Please use YYYY-MM-DD HH:MM")
+                return
+        else:
+            await interaction.response.send_message("Invalid field. Please try again.")
+            return
+        await interaction.response.send_message("Event updated successfully!")
 
     async def close_event(self, event_id: int, notify: bool = False):
         """Close an event"""
@@ -138,14 +158,38 @@ class EventManager(commands.Cog):
                     except discord.Forbidden:
                         pass  # Cannot send DM to user
 
+    @app_commands.command(name='close_event', description='Close an event')
+    @app_commands.default_permissions(administrator=True)
+    async def close_event_command(self, interaction: discord.Interaction, event_id: int):
+        event = self.db.get_event(event_id)
+        if not event:
+            await interaction.response.send_message("Event not found.")
+            return
+        if interaction.user.id != event['creator_id'] and interaction.user.id != self.bot.owner_id:
+            await interaction.response.send_message("You do not have permission to close this event.")
+            return
+        await self.close_event(event_id, notify=True)
+        await interaction.response.send_message(f"Event {event_id} has been closed.")
+
     async def open_event(self, event_id: int):
         """Reopen a closed event"""
         event = self.db.get_event(event_id)
         if not event:
             raise ValueError("Event not found")
-        if event['end_date'] < datetime.now():
-            raise ValueError("Cannot reopen event: end date has passed")
         self.db.update_event(event_id, status='open')
+
+    @app_commands.command(name='open_event', description='Reopen a closed event')
+    @app_commands.default_permissions(administrator=True)
+    async def open_event_command(self, interaction: discord.Interaction, event_id: int):
+        event = self.db.get_event(event_id)
+        if not event:
+            await interaction.response.send_message("Event not found.")
+            return
+        if interaction.user.id != event['creator_id'] and interaction.user.id != self.bot.owner_id:
+            await interaction.response.send_message("You do not have permission to open this event.")
+            return
+        await self.open_event(event_id)
+        await interaction.response.send_message(f"Event {event_id} has been reopened.")
 
     async def delete_event(self, event_id: int):
         """Delete an event"""
@@ -154,6 +198,19 @@ class EventManager(commands.Cog):
             raise ValueError("Event not found")
         self.db.delete_event(event_id)
 
+    @app_commands.command(name='delete_event', description='Delete an event')
+    @app_commands.default_permissions(administrator=True)
+    async def delete_event_command(self, interaction: discord.Interaction, event_id: int):
+        event = self.db.get_event(event_id)
+        if not event:
+            await interaction.response.send_message("Event not found.")
+            return
+        if interaction.user.id != event['creator_id'] and interaction.user.id != self.bot.owner_id:
+            await interaction.response.send_message("You do not have permission to delete this event.")
+            return
+        await self.delete_event(event_id)
+        await interaction.response.send_message(f"Event {event_id} has been deleted.")
+
     async def add_participant(self, event_id: int, user_id: int, role_name: str):
         """Add a participant to an event"""
         event = self.db.get_event(event_id)
@@ -161,8 +218,6 @@ class EventManager(commands.Cog):
             raise ValueError("Event not found")
         if event['status'] != 'open':
             raise ValueError("Event is not open for registration")
-        if event['end_date'] < datetime.now():
-            raise ValueError("Event has already ended")
         template = self.templates.get(event['template_name'])
         if template:
             if role_name not in template['roles']:
@@ -192,8 +247,7 @@ class EventManager(commands.Cog):
         )
         embed.add_field(
             name="Time",
-            value=f"Start: {event['start_date'].strftime('%Y-%m-%d %H:%M')}\n"
-                  f"End: {event['end_date'].strftime('%Y-%m-%d %H:%M')}",
+            value=f"Start: {event['start_date'].strftime('%Y-%m-%d %H:%M')}",
             inline=False
         )
         participants = self.db.get_participants(event_id)
@@ -206,7 +260,7 @@ class EventManager(commands.Cog):
                 embed.add_field(
                     name=f"{role_info['emoji']} {role_name} ({len(role_participants)}/{role_info['limit']})",
                     value='\n'.join(participant_list) if participant_list else "No participants",
-                    inline=True
+                    inline=False
                 )
         else:
             participant_list = [f"<@{p['user_id']}>" for p in participants]
@@ -229,19 +283,15 @@ class EventManager(commands.Cog):
                     ephemeral=True
                 )
                 return
-
             await self.add_participant(event_id, user_id, role_name)
-
             # Update the event embed
             embed = await self.get_event_embed(event_id)
             message = interaction.message
             await message.edit(embed=embed)
-
             await interaction.response.send_message(
                 f"You have successfully signed up as {role_name}.",
                 ephemeral=True
             )
-
         except ValueError as e:
             await interaction.response.send_message(str(e), ephemeral=True)
         except Exception as e:
@@ -255,7 +305,6 @@ class EventManager(commands.Cog):
         try:
             event_id = int(interaction.data['custom_id'].split('_')[1])
             user_id = interaction.user.id
-
             # Check if user is actually signed up
             participants = self.db.get_participants(event_id)
             if not any(p['user_id'] == user_id for p in participants):
@@ -264,23 +313,79 @@ class EventManager(commands.Cog):
                     ephemeral=True
                 )
                 return
-
             await self.remove_participant(event_id, user_id)
-
             # Update the event embed
             embed = await self.get_event_embed(event_id)
             message = interaction.message
             await message.edit(embed=embed)
-
             await interaction.response.send_message(
                 "You have successfully canceled your sign up.",
                 ephemeral=True
             )
-
         except Exception as e:
             print(f"Error in handle_cancel: {e}")
             await interaction.response.send_message(
                 "An error occurred while canceling your sign up.",
+                ephemeral=True
+            )
+
+    async def handle_edit(self, interaction: discord.Interaction):
+        try:
+            event_id = int(interaction.data['custom_id'].split('_')[1])
+            event = self.db.get_event(event_id)
+            if not event:
+                await interaction.response.send_message(
+                    "Event not found.",
+                    ephemeral=True
+                )
+                return
+            if interaction.user.id != event['creator_id'] and interaction.user.id != self.bot.owner_id:
+                await interaction.response.send_message(
+                    "You do not have permission to edit this event.",
+                    ephemeral=True
+                )
+                return
+            user = interaction.user
+            await user.send("Let's edit the event. What would you like to change? (name, description, start_date)")
+            def check(m):
+                return m.author == user and isinstance(m.channel, discord.DMChannel)
+            try:
+                field_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
+                field = field_msg.content.lower()
+                if field == 'name':
+                    await user.send("Please provide the new name for the event.")
+                    name_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
+                    name = name_msg.content
+                    await self.edit_event(event_id, name=name)
+                elif field == 'description':
+                    await user.send("Please provide the new description for the event.")
+                    description_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
+                    description = description_msg.content
+                    await self.edit_event(event_id, description=description)
+                elif field == 'start_date':
+                    await user.send("Please provide the new start date for the event. (Format: YYYY-MM-DD HH:MM)")
+                    start_date_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
+                    start_date = start_date_msg.content
+                    try:
+                        start_date = datetime.strptime(start_date, '%Y-%m-%d %H:%M')
+                        await self.edit_event(event_id, start_date=start_date)
+                    except ValueError:
+                        await user.send("Invalid date format. Please use YYYY-MM-DD HH:MM")
+                        return
+                else:
+                    await user.send("Invalid field. Please try again.")
+                    return
+                await user.send("Event updated successfully!")
+                # Update the event embed
+                embed = await self.get_event_embed(event_id)
+                message = interaction.message
+                await message.edit(embed=embed)
+            except TimeoutError:
+                await user.send("Event edit timed out. Please try again.")
+        except Exception as e:
+            print(f"Error in handle_edit: {e}")
+            await interaction.response.send_message(
+                "An error occurred while editing the event.",
                 ephemeral=True
             )
 

@@ -18,11 +18,13 @@ class EventSignupView(View):
             return
         for role_name, role_info in template['roles'].items():
             button = Button(
-                label=f"Sign up as {role_name}",
+                label=f"{role_name}",
                 emoji=role_info['emoji'],
                 custom_id=f"signup_{self.event_id}_{role_name}"
             )
             self.add_item(button)
+        # Add Cancel button
+        self.add_item(Button(label="Cancel", custom_id=f"cancel_{self.event_id}", style=discord.ButtonStyle.danger))
 
 class EventManagementView(View):
     def __init__(self, event_manager, event_id, timeout=None):
@@ -31,5 +33,3 @@ class EventManagementView(View):
         self.event_id = event_id
         # Add management buttons
         self.add_item(Button(label="Edit", custom_id=f"edit_{event_id}", style=discord.ButtonStyle.primary))
-        self.add_item(Button(label="Close", custom_id=f"close_{event_id}", style=discord.ButtonStyle.secondary))
-        self.add_item(Button(label="Delete", custom_id=f"delete_{event_id}", style=discord.ButtonStyle.danger))
