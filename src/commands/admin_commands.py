@@ -1,7 +1,7 @@
 ﻿import discord
 from discord import app_commands
 from discord.ext import commands
-from utils.permissions import is_admin
+from utils.permissions import is_admin,has_event_permission
 import asyncio
 
 class AdminCommands(commands.Cog):
@@ -14,6 +14,14 @@ class AdminCommands(commands.Cog):
         """Manage server-specific settings"""
         # Create settings menu
         pass
+
+    @app_commands.command(name='testing')
+    @app_commands.check(has_event_permission)
+    async def testing(self, interaction: discord.Interaction):
+        """testings"""
+        await interaction.response.send_message(f"You have successfully passed the admin check!", ephemeral=True)
+        pass
+
 
     @app_commands.command(name='setup')
     @app_commands.check(is_admin)

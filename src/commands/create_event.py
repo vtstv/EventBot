@@ -1,12 +1,13 @@
-﻿from datetime import datetime
+from datetime import datetime
 import discord
 from discord.ext import commands
-from discord.ui import View, Button
-from utils.permissions import has_event_permission
+from discord import app_commands
 import json
 import os
+import asyncio
+from events.views import EventSignupView
 
-class EventManager(commands.Cog):
+class CreateCommand(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.db = bot.db
@@ -27,14 +28,15 @@ class EventManager(commands.Cog):
                     except json.JSONDecodeError as e:
                         print(f"Error loading template {filename}: {e}")
 
-    @commands.command(name='create')
-    async def create(self, ctx):
+    @app_commands.command(name='create_event', description="Create a new event")
+    @app_commands.default_permissions(administrator=True)
+    async def create(self, interaction: discord.Interaction):
         """Start the event creation process via DM"""
-        user = ctx.author
+        user = interaction.user
         try:
             await user.send("Let's create a new event! What would you like to name it?")
         except discord.Forbidden:
-            await ctx.send("I can't send you a DM. Please check your privacy settings.")
+            await interaction.response.send_message("I can't send you a DM. Please check your privacy settings.")
             return
 
         def check(m):
@@ -52,10 +54,6 @@ class EventManager(commands.Cog):
             start_date_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
             start_date = start_date_msg.content
             print(f"Event start date: {start_date}")
-            await user.send("When will the event end? (Format: YYYY-MM-DD HH:MM)")
-            end_date_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
-            end_date = end_date_msg.content
-            print(f"Event end date: {end_date}")
             await user.send("Do you want to use a template for this event? (yes/no)")
             template_choice_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
             template_choice = template_choice_msg.content.lower()
@@ -73,27 +71,23 @@ class EventManager(commands.Cog):
                 await user.send("Invalid date format. Please use YYYY-MM-DD HH:MM")
                 return
 
-            if start_date >= datetime.strptime(end_date, '%Y-%m-%d %H:%M'):
-                await user.send("End date must be after start date")
-                return
             if template_name and template_name not in self.templates:
                 await user.send(f"Template '{template_name}' not found")
                 return
 
             event_id = self.db.create_event(
-                guild_id=ctx.guild.id,
-                creator_id=ctx.author.id,
+                guild_id=interaction.guild.id,
+                creator_id=interaction.user.id,
                 name=name,
                 description=description,
                 start_date=start_date,
-                end_date=datetime.strptime(end_date, '%Y-%m-%d %H:%M'),
                 template_name=template_name
             )
             print(f"Event created with ID: {event_id}")
             await user.send(f"Event created successfully! Event ID: {event_id}")
 
             # Post the event to the channel with interactive buttons
-            settings = self.db.get_guild_settings(ctx.guild.id)
+            settings = self.db.get_guild_settings(interaction.guild.id)
             if settings and 'listening_channel' in settings:
                 channel = self.bot.get_channel(settings['listening_channel'])
                 if channel:
@@ -104,81 +98,10 @@ class EventManager(commands.Cog):
                 else:
                     print(f"Channel with ID {settings['listening_channel']} not found")
             else:
-                print(f"Listening channel not set for guild {ctx.guild.id}")
+                print(f"Listening channel not set for guild {interaction.guild.id}")
 
-        except TimeoutError:
+        except asyncio.TimeoutError:
             await user.send("Event creation timed out. Please try again.")
-
-    async def edit_event(self, event_id: int, **kwargs):
-        """Edit an existing event"""
-        event = self.db.get_event(event_id)
-        if not event:
-            raise ValueError("Event not found")
-        # Validate date changes
-        if 'start_date' in kwargs or 'end_date' in kwargs:
-            start_date = kwargs.get('start_date', event['start_date'])
-            end_date = kwargs.get('end_date', event['end_date'])
-            if start_date >= end_date:
-                raise ValueError("End date must be after start date")
-        self.db.update_event(event_id, **kwargs)
-
-    async def close_event(self, event_id: int, notify: bool = False):
-        """Close an event"""
-        event = self.db.get_event(event_id)
-        if not event:
-            raise ValueError("Event not found")
-        self.db.update_event(event_id, status='closed')
-        if notify:
-            participants = self.db.get_participants(event_id)
-            for participant in participants:
-                user = self.bot.get_user(participant['user_id'])
-                if user:
-                    try:
-                        await user.send(f"Event '{event['name']}' has been closed.")
-                    except discord.Forbidden:
-                        pass  # Cannot send DM to user
-
-    async def open_event(self, event_id: int):
-        """Reopen a closed event"""
-        event = self.db.get_event(event_id)
-        if not event:
-            raise ValueError("Event not found")
-        if event['end_date'] < datetime.now():
-            raise ValueError("Cannot reopen event: end date has passed")
-        self.db.update_event(event_id, status='open')
-
-    async def delete_event(self, event_id: int):
-        """Delete an event"""
-        event = self.db.get_event(event_id)
-        if not event:
-            raise ValueError("Event not found")
-        self.db.delete_event(event_id)
-
-    async def add_participant(self, event_id: int, user_id: int, role_name: str):
-        """Add a participant to an event"""
-        event = self.db.get_event(event_id)
-        if not event:
-            raise ValueError("Event not found")
-        if event['status'] != 'open':
-            raise ValueError("Event is not open for registration")
-        if event['end_date'] < datetime.now():
-            raise ValueError("Event has already ended")
-        template = self.templates.get(event['template_name'])
-        if template:
-            if role_name not in template['roles']:
-                raise ValueError(f"Invalid role: {role_name}")
-            current_participants = self.db.get_participants(event_id)
-            role_count = len([p for p in current_participants if p['role_name'] == role_name])
-            if role_count >= template['roles'][role_name]['limit']:
-                raise ValueError(f"Role {role_name} is full")
-        self.db.add_participant(event_id, user_id, role_name)
-
-    async def remove_participant(self, event_id: int, user_id: int):
-        """Remove a participant from an event"""
-        event = self.db.get_event(event_id)
-        if not event:
-            raise ValueError("Event not found")
-        self.db.remove_participant(event_id, user_id)
 
     async def get_event_embed(self, event_id: int):
         """Create a Discord embed for an event"""
@@ -192,8 +115,7 @@ class EventManager(commands.Cog):
         )
         embed.add_field(
             name="Time",
-            value=f"Start: {event['start_date'].strftime('%Y-%m-%d %H:%M')}\n"
-                  f"End: {event['end_date'].strftime('%Y-%m-%d %H:%M')}",
+            value=f"Start: {event['start_date'].strftime('%Y-%m-%d %H:%M')}",
             inline=False
         )
         participants = self.db.get_participants(event_id)
@@ -206,7 +128,7 @@ class EventManager(commands.Cog):
                 embed.add_field(
                     name=f"{role_info['emoji']} {role_name} ({len(role_participants)}/{role_info['limit']})",
                     value='\n'.join(participant_list) if participant_list else "No participants",
-                    inline=True
+                    inline=False
                 )
         else:
             participant_list = [f"<@{p['user_id']}>" for p in participants]
@@ -229,19 +151,28 @@ class EventManager(commands.Cog):
                     ephemeral=True
                 )
                 return
-
+            event = self.db.get_event(event_id)
+            if not event:
+                raise ValueError("Event not found")
+            if event['status'] != 'open':
+                raise ValueError("Event is not open for registration")
+            template = self.templates.get(event['template_name'])
+            if template:
+                if role_name not in template['roles']:
+                    raise ValueError(f"Invalid role: {role_name}")
+                current_participants = self.db.get_participants(event_id)
+                role_count = len([p for p in current_participants if p['role_name'] == role_name])
+                if role_count >= template['roles'][role_name]['limit']:
+                    raise ValueError(f"Role {role_name} is full")
             await self.add_participant(event_id, user_id, role_name)
-
             # Update the event embed
             embed = await self.get_event_embed(event_id)
             message = interaction.message
             await message.edit(embed=embed)
-
             await interaction.response.send_message(
                 f"You have successfully signed up as {role_name}.",
                 ephemeral=True
             )
-
         except ValueError as e:
             await interaction.response.send_message(str(e), ephemeral=True)
         except Exception as e:
@@ -255,7 +186,6 @@ class EventManager(commands.Cog):
         try:
             event_id = int(interaction.data['custom_id'].split('_')[1])
             user_id = interaction.user.id
-
             # Check if user is actually signed up
             participants = self.db.get_participants(event_id)
             if not any(p['user_id'] == user_id for p in participants):
@@ -264,19 +194,15 @@ class EventManager(commands.Cog):
                     ephemeral=True
                 )
                 return
-
             await self.remove_participant(event_id, user_id)
-
             # Update the event embed
             embed = await self.get_event_embed(event_id)
             message = interaction.message
             await message.edit(embed=embed)
-
             await interaction.response.send_message(
                 "You have successfully canceled your sign up.",
                 ephemeral=True
             )
-
         except Exception as e:
             print(f"Error in handle_cancel: {e}")
             await interaction.response.send_message(
@@ -284,5 +210,29 @@ class EventManager(commands.Cog):
                 ephemeral=True
             )
 
+    async def add_participant(self, event_id: int, user_id: int, role_name: str):
+        """Add a participant to an event"""
+        event = self.db.get_event(event_id)
+        if not event:
+            raise ValueError("Event not found")
+        if event['status'] != 'open':
+            raise ValueError("Event is not open for registration")
+        template = self.templates.get(event['template_name'])
+        if template:
+            if role_name not in template['roles']:
+                raise ValueError(f"Invalid role: {role_name}")
+            current_participants = self.db.get_participants(event_id)
+            role_count = len([p for p in current_participants if p['role_name'] == role_name])
+            if role_count >= template['roles'][role_name]['limit']:
+                raise ValueError(f"Role {role_name} is full")
+        self.db.add_participant(event_id, user_id, role_name)
+
+    async def remove_participant(self, event_id: int, user_id: int):
+        """Remove a participant from an event"""
+        event = self.db.get_event(event_id)
+        if not event:
+            raise ValueError("Event not found")
+        self.db.remove_participant(event_id, user_id)
+
 async def setup(bot):
-    await bot.add_cog(EventManager(bot))
+    await bot.add_cog(CreateCommand(bot))

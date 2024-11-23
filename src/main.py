@@ -19,8 +19,12 @@ class EventBot(commands.Bot):
         self.listening_channel = None
 
     async def setup_hook(self):
-        await self.load_extension('commands.event_commands')
         await self.load_extension('commands.admin_commands')
+        await self.load_extension('commands.create_event')
+        await self.load_extension('commands.edit_event')
+        await self.load_extension('commands.close_event')
+        await self.load_extension('commands.open_event')
+        await self.load_extension('commands.delete_event')
 
     async def on_ready(self):
         print(f'{self.user} has connected to Discord')
@@ -28,22 +32,18 @@ class EventBot(commands.Bot):
 
     async def on_interaction(self, interaction: discord.Interaction):
         if interaction.type == discord.InteractionType.component:
-            custom_id = interaction.data.get('custom_id', '')
-
+            custom_id = interaction.data.get('custom_id', ' ')
             if custom_id.startswith('signup_'):
                 event_id = int(custom_id.split('_')[1])
                 role_name = custom_id.split('_')[2]
-
-                event_manager = self.get_cog('EventManager')
-                if event_manager:
-                    await event_manager.handle_signup(interaction, event_id, role_name)
-
+                create_command = self.get_cog('CreateCommand')
+                if create_command:
+                    await create_command.handle_signup(interaction, event_id, role_name)
             elif custom_id.startswith('cancel_'):
                 event_id = int(custom_id.split('_')[1])
-
-                event_manager = self.get_cog('EventManager')
-                if event_manager:
-                    await event_manager.handle_cancel(interaction)
+                create_command = self.get_cog('CreateCommand')
+                if create_command:
+                    await create_command.handle_cancel(interaction)
 
 def main():
     bot = EventBot()

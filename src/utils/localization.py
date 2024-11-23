@@ -28,7 +28,6 @@ class LocalizationManager:
                     "name_prompt": "Please provide a name for the event.",
                     "description_prompt": "Please provide a description for the event.",
                     "start_date_prompt": "When will the event start? (Format: YYYY-MM-DD HH:MM)",
-                    "end_date_prompt": "When will the event end? (Format: YYYY-MM-DD HH:MM)",
                     "success": "Event created successfully! Event ID: {event_id}",
                     "error": "Error creating event: {error}",
                     "timeout": "Event creation timed out. Please try again."
@@ -56,7 +55,6 @@ class LocalizationManager:
                 "not_found": "Event not found.",
                 "no_permission": "You don't have permission to perform this action.",
                 "invalid_date": "Invalid date format. Please use YYYY-MM-DD HH:MM",
-                "end_before_start": "End date must be after start date.",
                 "event_ended": "This event has already ended.",
                 "event_closed": "This event is closed.",
                 "role_full": "This role is already full.",
@@ -76,7 +74,7 @@ class LocalizationManager:
         """Get translated text for a given key path and language"""
         language = self.translations.get(language_code, self.translations[self.default_language])
         # Navigate through the nested dictionary using the key path
-        keys = key_path.split('.')
+        keys = key_path.split('-')
         text = language
         for key in keys:
             text = text.get(key, None)
@@ -90,7 +88,7 @@ class LocalizationManager:
 
     def add_language(self, language_code, translations):
         """Add a new language to the system"""
-        filepath = f'src/localization/{language_code}.json'
+        filepath = f"src/localization/{language_code}.json"
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(translations, f, indent=2)
         self.translations[language_code] = translations

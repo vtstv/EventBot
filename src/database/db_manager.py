@@ -31,7 +31,6 @@ class DatabaseManager:
 
     def _create_tables(self):
         cursor = self.connection.cursor()
-        # Events table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS events (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -45,7 +44,6 @@ class DatabaseManager:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Participants table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS participants (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -56,7 +54,6 @@ class DatabaseManager:
                 FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
             )
         ''')
-        # Guild settings table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS guild_settings (
                 guild_id BIGINT PRIMARY KEY,
