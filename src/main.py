@@ -36,14 +36,14 @@ class EventBot(commands.Bot):
             if custom_id.startswith('signup_'):
                 event_id = int(custom_id.split('_')[1])
                 role_name = custom_id.split('_')[2]
-                create_command = self.get_cog('CreateCommand')
-                if create_command:
-                    await create_command.handle_signup(interaction, event_id, role_name)
+                create_event_command = self.get_cog('CreateEventCommand')
+                if create_event_command:
+                    await create_event_command.handle_signup(interaction, event_id, role_name)
             elif custom_id.startswith('cancel_'):
                 event_id = int(custom_id.split('_')[1])
-                create_command = self.get_cog('CreateCommand')
-                if create_command:
-                    await create_command.handle_cancel(interaction)
+                create_event_command = self.get_cog('CreateEventCommand')
+                if create_event_command:
+                    await create_event_command.handle_cancel(interaction)
 
 def main():
     bot = EventBot()

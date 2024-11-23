@@ -7,7 +7,7 @@ import os
 import asyncio
 from events.views import EventSignupView
 
-class CreateCommand(commands.Cog):
+class CreateEventCommand(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.db = bot.db
@@ -30,7 +30,7 @@ class CreateCommand(commands.Cog):
 
     @app_commands.command(name='create_event', description="Create a new event")
     @app_commands.default_permissions(administrator=True)
-    async def create(self, interaction: discord.Interaction):
+    async def create_event(self, interaction: discord.Interaction):
         """Start the event creation process via DM"""
         user = interaction.user
         try:
@@ -93,8 +93,12 @@ class CreateCommand(commands.Cog):
                 if channel:
                     embed = await self.get_event_embed(event_id)
                     view = EventSignupView(self, event_id)
-                    await channel.send(embed=embed, view=view)
+                    message = await channel.send(embed=embed, view=view)
                     print(f"Event posted to channel {channel.name} with ID {channel.id}")
+
+                    # Create a thread for the event
+                    thread = await message.create_thread(name=name)
+                    print(f"Thread created for event: {thread.name} with ID {thread.id}")
                 else:
                     print(f"Channel with ID {settings['listening_channel']} not found")
             else:
@@ -128,7 +132,7 @@ class CreateCommand(commands.Cog):
                 embed.add_field(
                     name=f"{role_info['emoji']} {role_name} ({len(role_participants)}/{role_info['limit']})",
                     value='\n'.join(participant_list) if participant_list else "No participants",
-                    inline=False
+                    inline=True
                 )
         else:
             participant_list = [f"<@{p['user_id']}>" for p in participants]
@@ -235,4 +239,4 @@ class CreateCommand(commands.Cog):
         self.db.remove_participant(event_id, user_id)
 
 async def setup(bot):
-    await bot.add_cog(CreateCommand(bot))
+    await bot.add_cog(CreateEventCommand(bot))
