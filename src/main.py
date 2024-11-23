@@ -2,7 +2,7 @@
 from discord.ext import commands
 import yaml
 import os
-import json  # Add this import statement
+import json
 from dotenv import load_dotenv
 from database.db_manager import DatabaseManager
 from utils.config_loader import ConfigLoader

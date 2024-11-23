@@ -29,25 +29,20 @@ class CreateEventCommand(commands.Cog):
         try:
             name_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
             name = name_msg.content
-            print(f"Event name: {name}")
             await user.send("Please provide a description for the event.")
             description_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
             description = description_msg.content
-            print(f"Event description: {description}")
             await user.send("When will the event start? (Format: YYYY-MM-DD HH:MM)")
             start_date_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
             start_date = start_date_msg.content
-            print(f"Event start date: {start_date}")
             await user.send("Do you want to use a template for this event? (yes/no)")
             template_choice_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
             template_choice = template_choice_msg.content.lower()
-            print(f"Template choice: {template_choice}")
             template_name = None
             if template_choice == 'yes':
                 await user.send("Please provide the template name.")
                 template_name_msg = await self.bot.wait_for('message', check=check, timeout=60.0)
                 template_name = template_name_msg.content
-                print(f"Template name: {template_name}")
 
             try:
                 start_date = datetime.strptime(start_date, '%Y-%m-%d %H:%M')
@@ -67,7 +62,6 @@ class CreateEventCommand(commands.Cog):
                 start_date=start_date,
                 template_name=template_name
             )
-            print(f"Event created with ID: {event_id}")
             await user.send(f"Event created successfully! Event ID: {event_id}")
 
             # Post the event to the channel with interactive buttons
@@ -75,63 +69,61 @@ class CreateEventCommand(commands.Cog):
             if settings and 'listening_channel' in settings:
                 channel = self.bot.get_channel(settings['listening_channel'])
                 if channel:
-                    embed = await self.get_event_embed(event_id)
+                    event_message = await self.format_event_message(event_id)
                     view = EventSignupView(self, event_id, self.bot.templates)
-                    message = await channel.send(embed=embed, view=view)
-                    print(f"Event posted to channel {channel.name} with ID {channel.id}")
+                    message = await channel.send(content=event_message, view=view)
 
                     # Create a thread for the event
                     thread = await message.create_thread(name=name)
-                    print(f"Thread created for event: {thread.name} with ID {thread.id}")
-                else:
-                    print(f"Channel with ID {settings['listening_channel']} not found")
-            else:
-                print(f"Listening channel not set for guild {interaction.guild.id}")
 
         except asyncio.TimeoutError:
             await user.send("Event creation timed out. Please try again.")
 
-    async def get_event_embed(self, event_id: int):
-        """Create a Discord embed for an event"""
+    async def format_event_message(self, event_id: int) -> str:
+        """Format event information as a text message"""
         event = self.db.get_event(event_id)
         if not event:
             raise ValueError("Event not found")
-        embed = discord.Embed(
-            title=event['name'],
-            description=event['description'],
-            color=discord.Color.blue()
-        )
-        embed.add_field(
-            name="Time",
-            value=f"Start: {event['start_date'].strftime('%Y-%m-%d %H:%M')}",
-            inline=False
-        )
+        
+        message_parts = [
+            f"📅 **{event['name']}**\n",
+            f"{event['description']}\n",
+            f"🕒 Start: {event['start_date'].strftime('%Y-%m-%d %H:%M')}\n"
+        ]
+
         participants = self.db.get_participants(event_id)
+        
         if event['template_name'] and event['template_name'] in self.bot.templates:
             template = self.bot.templates[event['template_name']]
+            message_parts.append("\n**Roles:**")
+            
             for role_name, role_info in template['roles'].items():
                 role_participants = [p for p in participants if p['role_name'] == role_name]
                 participant_list = [f"<@{p['user_id']}>" for p in role_participants]
                 remaining = role_info['limit'] - len(role_participants)
-                embed.add_field(
-                    name=f"{role_info['emoji']} {role_name} ({len(role_participants)}/{role_info['limit']})",
-                    value='\n'.join(participant_list) if participant_list else "No participants",
-                    inline=False
+                
+                message_parts.append(
+                    f"\n{role_info['emoji']} {role_name} ({len(role_participants)}/{role_info['limit']})"
                 )
+                if participant_list:
+                    message_parts.append("→ " + ", ".join(participant_list))
+                else:
+                    message_parts.append("→ No participants")
         else:
-            participant_list = [f"<@{p['user_id']}>" for p in participants]
-            embed.add_field(
-                name=f"Participants ({len(participants)})",
-                value='\n'.join(participant_list) if participant_list else "No participants",
-                inline=False
-            )
-        embed.set_footer(text=f"Event ID: {event_id} | Status: {event['status']}")
-        return embed
+            message_parts.append(f"\n**Participants ({len(participants)}):**")
+            if participants:
+                participant_list = [f"<@{p['user_id']}>" for p in participants]
+                message_parts.append("→ " + ", ".join(participant_list))
+            else:
+                message_parts.append("→ No participants yet")
+
+        message_parts.append(f"\n📝 Event ID: {event_id} | Status: {event['status']}")
+        
+        return "\n".join(message_parts)
 
     async def handle_signup(self, interaction: discord.Interaction, event_id: int, role_name: str):
         try:
             user_id = interaction.user.id
-            # Check if user is already signed up
             participants = self.db.get_participants(event_id)
             if any(p['user_id'] == user_id for p in participants):
                 await interaction.response.send_message(
@@ -139,11 +131,13 @@ class CreateEventCommand(commands.Cog):
                     ephemeral=True
                 )
                 return
+
             event = self.db.get_event(event_id)
             if not event:
                 raise ValueError("Event not found")
             if event['status'] != 'open':
                 raise ValueError("Event is not open for registration")
+                
             template = self.bot.templates.get(event['template_name'])
             if template:
                 if role_name not in template['roles']:
@@ -152,11 +146,10 @@ class CreateEventCommand(commands.Cog):
                 role_count = len([p for p in current_participants if p['role_name'] == role_name])
                 if role_count >= template['roles'][role_name]['limit']:
                     raise ValueError(f"Role {role_name} is full")
+                    
             await self.add_participant(event_id, user_id, role_name)
-            # Update the event embed
-            embed = await self.get_event_embed(event_id)
-            message = interaction.message
-            await message.edit(embed=embed)
+            event_message = await self.format_event_message(event_id)
+            await interaction.message.edit(content=event_message)
             await interaction.response.send_message(
                 f"You have successfully signed up as {role_name}.",
                 ephemeral=True
@@ -174,7 +167,6 @@ class CreateEventCommand(commands.Cog):
         try:
             event_id = int(interaction.data['custom_id'].split('_')[1])
             user_id = interaction.user.id
-            # Check if user is actually signed up
             participants = self.db.get_participants(event_id)
             if not any(p['user_id'] == user_id for p in participants):
                 await interaction.response.send_message(
@@ -182,11 +174,10 @@ class CreateEventCommand(commands.Cog):
                     ephemeral=True
                 )
                 return
+                
             await self.remove_participant(event_id, user_id)
-            # Update the event embed
-            embed = await self.get_event_embed(event_id)
-            message = interaction.message
-            await message.edit(embed=embed)
+            event_message = await self.format_event_message(event_id)
+            await interaction.message.edit(content=event_message)
             await interaction.response.send_message(
                 "You have successfully canceled your sign up.",
                 ephemeral=True
