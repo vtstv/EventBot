@@ -2,10 +2,11 @@
 from discord.ui import View, Button
 
 class EventSignupView(View):
-    def __init__(self, event_manager, event_id, timeout=None):
+    def __init__(self, event_manager, event_id, templates, timeout=None):
         super().__init__(timeout=timeout)
         self.event_manager = event_manager
         self.event_id = event_id
+        self.templates = templates
         self._add_role_buttons()
 
     def _add_role_buttons(self):
@@ -13,7 +14,7 @@ class EventSignupView(View):
         if not event or not event['template_name']:
             self.add_item(Button(label="Sign Up", custom_id=f"signup_{self.event_id}_participant"))
             return
-        template = self.event_manager.templates.get(event['template_name'])
+        template = self.templates.get(event['template_name'])
         if not template:
             return
         for role_name, role_info in template['roles'].items():

@@ -11,22 +11,6 @@ class CreateEventCommand(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.db = bot.db
-        self.load_templates()
-
-    def load_templates(self):
-        self.templates = {}
-        template_dir = 'templates'
-        if not os.path.exists(template_dir):
-            os.makedirs(template_dir)
-        for filename in os.listdir(template_dir):
-            if filename.endswith('.json'):
-                with open(os.path.join(template_dir, filename), 'r') as f:
-                    try:
-                        template_name = filename[:-5]  # Remove .json extension
-                        self.templates[template_name] = json.load(f)
-                        print(f"Successfully loaded template: {template_name}")
-                    except json.JSONDecodeError as e:
-                        print(f"Error loading template {filename}: {e}")
 
     @app_commands.command(name='create_event', description="Create a new event")
     @app_commands.default_permissions(administrator=True)
@@ -71,7 +55,7 @@ class CreateEventCommand(commands.Cog):
                 await user.send("Invalid date format. Please use YYYY-MM-DD HH:MM")
                 return
 
-            if template_name and template_name not in self.templates:
+            if template_name and template_name not in self.bot.templates:
                 await user.send(f"Template '{template_name}' not found")
                 return
 
@@ -92,7 +76,7 @@ class CreateEventCommand(commands.Cog):
                 channel = self.bot.get_channel(settings['listening_channel'])
                 if channel:
                     embed = await self.get_event_embed(event_id)
-                    view = EventSignupView(self, event_id)
+                    view = EventSignupView(self, event_id, self.bot.templates)
                     message = await channel.send(embed=embed, view=view)
                     print(f"Event posted to channel {channel.name} with ID {channel.id}")
 
@@ -123,8 +107,8 @@ class CreateEventCommand(commands.Cog):
             inline=False
         )
         participants = self.db.get_participants(event_id)
-        if event['template_name'] and event['template_name'] in self.templates:
-            template = self.templates[event['template_name']]
+        if event['template_name'] and event['template_name'] in self.bot.templates:
+            template = self.bot.templates[event['template_name']]
             for role_name, role_info in template['roles'].items():
                 role_participants = [p for p in participants if p['role_name'] == role_name]
                 participant_list = [f"<@{p['user_id']}>" for p in role_participants]
@@ -132,7 +116,7 @@ class CreateEventCommand(commands.Cog):
                 embed.add_field(
                     name=f"{role_info['emoji']} {role_name} ({len(role_participants)}/{role_info['limit']})",
                     value='\n'.join(participant_list) if participant_list else "No participants",
-                    inline=True
+                    inline=False
                 )
         else:
             participant_list = [f"<@{p['user_id']}>" for p in participants]
@@ -160,7 +144,7 @@ class CreateEventCommand(commands.Cog):
                 raise ValueError("Event not found")
             if event['status'] != 'open':
                 raise ValueError("Event is not open for registration")
-            template = self.templates.get(event['template_name'])
+            template = self.bot.templates.get(event['template_name'])
             if template:
                 if role_name not in template['roles']:
                     raise ValueError(f"Invalid role: {role_name}")
@@ -221,7 +205,7 @@ class CreateEventCommand(commands.Cog):
             raise ValueError("Event not found")
         if event['status'] != 'open':
             raise ValueError("Event is not open for registration")
-        template = self.templates.get(event['template_name'])
+        template = self.bot.templates.get(event['template_name'])
         if template:
             if role_name not in template['roles']:
                 raise ValueError(f"Invalid role: {role_name}")

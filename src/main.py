@@ -2,6 +2,7 @@
 from discord.ext import commands
 import yaml
 import os
+import json  # Add this import statement
 from dotenv import load_dotenv
 from database.db_manager import DatabaseManager
 from utils.config_loader import ConfigLoader
@@ -17,6 +18,22 @@ class EventBot(commands.Bot):
         self.config = ConfigLoader().load_config()
         self.db = DatabaseManager()
         self.listening_channel = None
+        self.templates = {}
+        self.load_templates()
+
+    def load_templates(self):
+        template_dir = 'templates'
+        if not os.path.exists(template_dir):
+            os.makedirs(template_dir)
+        for filename in os.listdir(template_dir):
+            if filename.endswith('.json'):
+                with open(os.path.join(template_dir, filename), 'r') as f:
+                    try:
+                        template_name = filename[:-5]  # Remove .json extension
+                        self.templates[template_name] = json.load(f)
+                        print(f"Successfully loaded template: {template_name}")
+                    except json.JSONDecodeError as e:
+                        print(f"Error loading template {filename}: {e}")
 
     async def setup_hook(self):
         await self.load_extension('commands.admin_commands')

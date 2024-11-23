@@ -41,7 +41,18 @@ class DatabaseManager:
                 start_date DATETIME NOT NULL,
                 status VARCHAR(20) DEFAULT 'open',
                 template_name VARCHAR(50),
+                message_id BIGINT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS participants (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                event_id INT NOT NULL,
+                user_id BIGINT NOT NULL,
+                role_name VARCHAR(60) NOT NULL,
+                signup_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
             )
         ''')
         cursor.execute('''
@@ -62,6 +73,19 @@ class DatabaseManager:
         ''')
         self.connection.commit()
         cursor.close()
+
+    def store_event_message_id(self, event_id: int, message_id: int):
+        cursor = self.connection.cursor()
+        cursor.execute('UPDATE events SET message_id = %s WHERE id = %s', (message_id, event_id))
+        self.connection.commit()
+        cursor.close()
+
+    def get_event_message_id(self, event_id: int):
+        cursor = self.connection.cursor(dictionary=True)
+        cursor.execute('SELECT message_id FROM events WHERE id = %s', (event_id,))
+        result = cursor.fetchone()
+        cursor.close()
+        return result['message_id'] if result and result['message_id'] else None
 
     def create_event(self, guild_id, creator_id, name, description, start_date, template_name=None):
         cursor = self.connection.cursor()
